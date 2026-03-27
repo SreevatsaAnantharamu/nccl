@@ -15,14 +15,19 @@
 static gdr_t (*gdr_internal_open)(void);
 static int (*gdr_internal_close)(gdr_t g);
 static int (*gdr_internal_pin_buffer)(gdr_t g, unsigned long addr, size_t size, uint64_t p2p_token, uint32_t va_space, gdr_mh_t *handle);
+static int (*gdr_internal_pin_buffer_v2)(gdr_t g, unsigned long addr, size_t size, uint32_t flags, gdr_mh_t *handle);
 static int (*gdr_internal_unpin_buffer)(gdr_t g, gdr_mh_t handle);
-static int (*gdr_internal_get_info)(gdr_t g, gdr_mh_t handle, gdr_info_t *info);
+static int (*gdr_internal_get_info_v2)(gdr_t g, gdr_mh_t handle, gdr_info_t *info);
+#define gdr_internal_get_info gdr_internal_get_info_v2
 static int (*gdr_internal_map)(gdr_t g, gdr_mh_t handle, void **va, size_t size);
+static int (*gdr_internal_map_v2)(gdr_t g, gdr_mh_t handle, void **ptr_va, size_t size, int flags);
 static int (*gdr_internal_unmap)(gdr_t g, gdr_mh_t handle, void *va, size_t size);
 static void (*gdr_internal_runtime_get_version)(int *major, int *minor);
 static void (*gdr_internal_driver_get_version)(gdr_t g, int *major, int *minor);
 static int (*gdr_internal_copy_to_mapping)(gdr_mh_t handle, void *map_d_ptr, const void *h_ptr, size_t size);
 static int (*gdr_internal_copy_from_mapping)(gdr_mh_t handle, void *h_ptr, const void *map_d_ptr, size_t size);
+static int (*gdr_internal_get_attribute)(gdr_t g, gdr_attr_t attr, int *v);
+static int (*gdr_internal_get_mapping_type_string)(gdr_mapping_type_t mapping_type, const char **pstr);
 
 
 // Used to make the GDR library calls thread safe
@@ -70,14 +75,18 @@ static void initOnceFunc(void) {
   LOAD_SYM(gdrhandle, "gdr_open", gdr_internal_open);
   LOAD_SYM(gdrhandle, "gdr_close", gdr_internal_close);
   LOAD_SYM(gdrhandle, "gdr_pin_buffer", gdr_internal_pin_buffer);
+  LOAD_SYM(gdrhandle, "gdr_pin_buffer_v2", gdr_internal_pin_buffer_v2);
   LOAD_SYM(gdrhandle, "gdr_unpin_buffer", gdr_internal_unpin_buffer);
-  LOAD_SYM(gdrhandle, "gdr_get_info", gdr_internal_get_info);
+  LOAD_SYM(gdrhandle, "gdr_get_info_v2", gdr_internal_get_info);
   LOAD_SYM(gdrhandle, "gdr_map", gdr_internal_map);
+  LOAD_SYM(gdrhandle, "gdr_map_v2", gdr_internal_map_v2);
   LOAD_SYM(gdrhandle, "gdr_unmap", gdr_internal_unmap);
   LOAD_SYM(gdrhandle, "gdr_runtime_get_version", gdr_internal_runtime_get_version);
   LOAD_SYM(gdrhandle, "gdr_driver_get_version", gdr_internal_driver_get_version);
   LOAD_SYM(gdrhandle, "gdr_copy_to_mapping", gdr_internal_copy_to_mapping);
   LOAD_SYM(gdrhandle, "gdr_copy_from_mapping", gdr_internal_copy_from_mapping);
+  LOAD_SYM_OPTIONAL(gdrhandle, "gdr_get_attribute", gdr_internal_get_attribute);
+  LOAD_SYM_OPTIONAL(gdrhandle, "gdr_get_mapping_type_string", gdr_internal_get_mapping_type_string);
 
   initResult = ncclSuccess;
   return;
@@ -86,14 +95,18 @@ teardown:
   gdr_internal_open = NULL;
   gdr_internal_close = NULL;
   gdr_internal_pin_buffer = NULL;
+  gdr_internal_pin_buffer_v2 = NULL;
   gdr_internal_unpin_buffer = NULL;
   gdr_internal_get_info = NULL;
   gdr_internal_map = NULL;
+  gdr_internal_map_v2 = NULL;
   gdr_internal_unmap = NULL;
   gdr_internal_runtime_get_version = NULL;
   gdr_internal_driver_get_version = NULL;
   gdr_internal_copy_to_mapping = NULL;
   gdr_internal_copy_from_mapping = NULL;
+  gdr_internal_get_attribute = NULL;
+  gdr_internal_get_mapping_type_string = NULL;
 
   if (gdrhandle != NULL) dlclose(gdrhandle);
   initResult = ncclSystemError;

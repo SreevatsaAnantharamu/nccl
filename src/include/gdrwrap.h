@@ -99,7 +99,7 @@ static ncclResult_t wrap_gdr_copy_from_mapping(gdr_mh_t handle, void *h_ptr, con
 #else
 // Dynamically handle dependency the GDR API library
 
-/* Extracted from gdrapi.h (v2.1 Nov 2020) */
+/* Extracted from gdrapi.h (v2.5.2 Mar 2026) */
 
 #define GPU_PAGE_SHIFT   16
 #define GPU_PAGE_SIZE    (1UL << GPU_PAGE_SHIFT)
@@ -113,16 +113,50 @@ typedef struct gdr_mh_s {
   unsigned long h;
 } gdr_mh_t;
 
-struct gdr_info {
+typedef enum gdr_pin_flags {
+    GDR_PIN_FLAG_DEFAULT = 0,
+    GDR_PIN_FLAG_FORCE_PCIE = 1
+} gdr_pin_flags_t;
+
+typedef enum gdr_mapping_type {
+    GDR_MAPPING_TYPE_NONE = 0,
+    GDR_MAPPING_TYPE_WC = 1,
+    GDR_MAPPING_TYPE_CACHING = 2,
+    GDR_MAPPING_TYPE_DEVICE = 3,
+    GDR_MAPPING_TYPE_MAX  //< For internal use. Not an actual type.
+} gdr_mapping_type_t;
+
+typedef struct gdr_info_v2 {
     uint64_t va;
     uint64_t mapped_size;
     uint32_t page_size;
+    // tm_cycles and cycles_per_ms are deprecated and will be removed in future.
     uint64_t tm_cycles;
     uint32_t cycles_per_ms;
     unsigned mapped:1;
     unsigned wc_mapping:1;
-};
-typedef struct gdr_info gdr_info_t;
+    gdr_mapping_type_t mapping_type;
+} gdr_info_v2_t;
+typedef gdr_info_v2_t gdr_info_t;
+
+typedef enum gdr_map_flags {
+    GDR_MAP_FLAG_DEFAULT = 0,
+    GDR_MAP_FLAG_REQ_WC_MAPPING = 1,
+    GDR_MAP_FLAG_REQ_CACHE_MAPPING = 2,
+    GDR_MAP_FLAG_REQ_DEVICE_MAPPING = 3
+} gdr_map_flags_t;
+
+typedef enum gdr_attr {
+    GDR_ATTR_USE_PERSISTENT_MAPPING = 1,    // Query whether gdrdrv uses persistent mapping
+                                            // or traditional (non-persistent) mapping.
+
+    GDR_ATTR_SUPPORT_PIN_FLAG_FORCE_PCIE = 2, // Return non-zero if both gdrdrv and the GPU driver
+                                              // support the GDR_PIN_FLAG_FORCE_PCIE feature.
+                                              // Note that passing the flag may still lead to a run-time error,
+                                              // for example when running on unsupported platforms.
+    // For internal use only
+    GDR_ATTR_MAX
+} gdr_attr_t;
 
 /* End of gdrapi.h */
 
@@ -131,14 +165,19 @@ ncclResult_t wrap_gdr_symbols(void);
 gdr_t wrap_gdr_open(void);
 ncclResult_t wrap_gdr_close(gdr_t g);
 ncclResult_t wrap_gdr_pin_buffer(gdr_t g, unsigned long addr, size_t size, uint64_t p2p_token, uint32_t va_space, gdr_mh_t *handle);
+ncclResult_t wrap_gdr_pin_buffer_v2(gdr_t g, unsigned long addr, size_t size, uint32_t flags, gdr_mh_t *handle);
 ncclResult_t wrap_gdr_unpin_buffer(gdr_t g, gdr_mh_t handle);
-ncclResult_t wrap_gdr_get_info(gdr_t g, gdr_mh_t handle, gdr_info_t *info);
+ncclResult_t wrap_gdr_get_info_v2(gdr_t g, gdr_mh_t handle, gdr_info_v2_t *info);
+#define wrap_gdr_get_info wrap_gdr_get_info_v2
 ncclResult_t wrap_gdr_map(gdr_t g, gdr_mh_t handle, void **va, size_t size);
+ncclResult_t wrap_gdr_map_v2(gdr_t g, gdr_mh_t handle, void **ptr_va, size_t size, int flags);
 ncclResult_t wrap_gdr_unmap(gdr_t g, gdr_mh_t handle, void *va, size_t size);
 ncclResult_t wrap_gdr_runtime_get_version(int *major, int *minor);
 ncclResult_t wrap_gdr_driver_get_version(gdr_t g, int *major, int *minor);
 ncclResult_t wrap_gdr_copy_to_mapping(gdr_mh_t handle, void *map_d_ptr, const void *h_ptr, size_t size);
 ncclResult_t wrap_gdr_copy_from_mapping(gdr_mh_t handle, void *h_ptr, const void *map_d_ptr, size_t size);
+ncclResult_t wrap_gdr_get_attribute(gdr_t g, gdr_attr_t attr, int *v);
+ncclResult_t wrap_gdr_get_mapping_type_string(gdr_mapping_type_t mapping_type, const char **pstr);
 
 #endif // GDR_DIRECT
 
@@ -171,8 +210,9 @@ static gdr_t ncclGdrInit() {
       // Query the version of gdrdrv driver
       NCCLCHECKGOTO(wrap_gdr_driver_get_version(handle, &drvMajor, &drvMinor), res, error);
 
-      // Only support GDRAPI 2.1 and later
-      if (libMajor < 2 || (libMajor == 2 && libMinor < 1) || drvMajor < 2 || (drvMajor == 2 && drvMinor < 1)) {
+      // Only support GDRAPI 2.5.2 and later
+      if (libMajor < 2 || (libMajor == 2 && libMinor < 5)) {
+      //if (libMajor < 2 || (libMajor == 2 && libMinor < 5) || drvMajor < 2 || (drvMajor == 2 && drvMinor < 5)) {
         goto error;
       }
       else
@@ -203,7 +243,8 @@ static ncclResult_t ncclGdrCudaCalloc(T** ptr, T** devPtr, size_t nelem, void** 
   size_t align = alignedAddr - (uint64_t)devMem;
 
   //TRACE(NCCL_INIT, "GDRCOPY: Pin buffer 0x%lx (%p) align %zu size %zu", alignedAddr, devMem, align, mapSize);
-  NCCLCHECK(wrap_gdr_pin_buffer(ncclGdrCopy, alignedAddr, mapSize, 0, 0, &mh));
+  const uint32_t flags = GDR_PIN_FLAG_FORCE_PCIE;
+  NCCLCHECK(wrap_gdr_pin_buffer_v2(ncclGdrCopy, alignedAddr, mapSize, flags, &mh));
 
   NCCLCHECK(wrap_gdr_map(ncclGdrCopy, mh, &gdrMap, mapSize));
   //TRACE(NCCL_INIT, "GDRCOPY : mapped %p (0x%lx) at %p", devMem, alignedAddr, gdrMap);

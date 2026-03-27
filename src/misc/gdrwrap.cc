@@ -154,6 +154,20 @@ ncclResult_t wrap_gdr_pin_buffer(gdr_t g, unsigned long addr, size_t size, uint6
   return ncclSuccess;
 }
 
+ncclResult_t wrap_gdr_pin_buffer_v2(gdr_t g, unsigned long addr, size_t size, uint32_t flags, gdr_mh_t *handle) {
+  if (gdr_internal_pin_buffer_v2 == NULL) {
+    WARN("GDRCOPY lib wrapper not initialized.");
+    return ncclInternalError;
+  }
+  int ret;
+  GDRLOCKCALL(gdr_internal_pin_buffer_v2(g, addr, size, flags, handle), ret);
+  if (ret != 0) {
+    WARN("gdr_pin_buffer_v2(addr %lx, size %zu) failed: %d, flags %u", addr, size, ret, flags);
+    return ncclSystemError;
+  }
+  return ncclSuccess;
+}
+
 ncclResult_t wrap_gdr_unpin_buffer(gdr_t g, gdr_mh_t handle) {
   if (gdr_internal_unpin_buffer == NULL) {
     WARN("GDRCOPY lib wrapper not initialized.");

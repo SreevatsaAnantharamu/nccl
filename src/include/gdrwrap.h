@@ -210,9 +210,8 @@ static gdr_t ncclGdrInit() {
       // Query the version of gdrdrv driver
       NCCLCHECKGOTO(wrap_gdr_driver_get_version(handle, &drvMajor, &drvMinor), res, error);
 
-      // Only support GDRAPI 2.5.2 and later
-      if (libMajor < 2 || (libMajor == 2 && libMinor < 5)) {
-      //if (libMajor < 2 || (libMajor == 2 && libMinor < 5) || drvMajor < 2 || (drvMajor == 2 && drvMinor < 5)) {
+      // Only support GDRAPI 2.5 (Specifically need 2.5.2 for 6.17+ kernels) and later
+      if (libMajor < 2 || (libMajor == 2 && libMinor < 5) || drvMajor < 2 || (drvMajor == 2 && drvMinor < 5)) {
         goto error;
       }
       else

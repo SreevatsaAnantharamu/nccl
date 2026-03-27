@@ -50,7 +50,7 @@ static inline void wc_store_fence(void) { atomic_thread_fence(memory_order_relea
 #endif
 #endif
 
-//#define GDR_DIRECT 1
+#define GDR_DIRECT 1
 #ifdef GDR_DIRECT
 // Call the GDR API library code directly rather than via
 // dlopen() wrappers
@@ -63,6 +63,10 @@ static ncclResult_t wrap_gdr_pin_buffer(gdr_t g, unsigned long addr, size_t size
   GDRCHECK(gdr_pin_buffer(g, addr, size, p2p_token, va_space, handle));
   return ncclSuccess;
 }
+static ncclResult_t wrap_gdr_pin_buffer_v2(gdr_t g, unsigned long addr, size_t size, uint32_t flags, gdr_mh_t *handle) {
+  GDRCHECK(gdr_pin_buffer_v2(g, addr, size, flags, handle));
+  return ncclSuccess;
+}
 static ncclResult_t wrap_gdr_unpin_buffer(gdr_t g, gdr_mh_t handle) {
   GDRCHECK(gdr_unpin_buffer(g, handle));
   return ncclSuccess;
@@ -72,18 +76,18 @@ static ncclResult_t wrap_gdr_get_info(gdr_t g, gdr_mh_t handle, gdr_info_t *info
   return ncclSuccess;
 }
 static ncclResult_t wrap_gdr_map(gdr_t g, gdr_mh_t handle, void **va, size_t size) {
-  GDRCHECK(gdr_map(gdr_t g, gdr_mh_t handle, void **va, size_t size));
+  GDRCHECK(gdr_map(g, handle, va, size));
   return ncclSuccess;
 }
 static ncclResult_t wrap_gdr_unmap(gdr_t g, gdr_mh_t handle, void *va, size_t size) {
-  GDRCHECK(gdr_unmap(gdr_t g, gdr_mh_t handle, void **va, size_t size));
+  GDRCHECK(gdr_unmap(g, handle, va, size));
   return ncclSuccess;
 }
-static void wrap_gdr_runtime_get_version(int *major, int *minor) {
+static ncclResult_t wrap_gdr_runtime_get_version(int *major, int *minor) {
   gdr_runtime_get_version(major, minor);
   return ncclSuccess;
 }
-static void wrap_gdr_driver_get_version(gdr_t g, int *major, int *minor) {
+static ncclResult_t wrap_gdr_driver_get_version(gdr_t g, int *major, int *minor) {
   gdr_driver_get_version(g, major, minor);
   return ncclSuccess;
 }
@@ -203,7 +207,9 @@ static ncclResult_t ncclGdrCudaCalloc(T** ptr, T** devPtr, size_t nelem, void** 
   size_t align = alignedAddr - (uint64_t)devMem;
 
   //TRACE(NCCL_INIT, "GDRCOPY: Pin buffer 0x%lx (%p) align %zu size %zu", alignedAddr, devMem, align, mapSize);
-  NCCLCHECK(wrap_gdr_pin_buffer(ncclGdrCopy, alignedAddr, mapSize, 0, 0, &mh));
+  //NCCLCHECK(wrap_gdr_pin_buffer(ncclGdrCopy, alignedAddr, mapSize, 0, 0, &mh));
+  const int pin_buffer_flags = GDR_PIN_FLAG_FORCE_PCIE;
+  NCCLCHECK(wrap_gdr_pin_buffer_v2(ncclGdrCopy, alignedAddr, mapSize, pin_buffer_flags, &mh));
 
   NCCLCHECK(wrap_gdr_map(ncclGdrCopy, mh, &gdrMap, mapSize));
   //TRACE(NCCL_INIT, "GDRCOPY : mapped %p (0x%lx) at %p", devMem, alignedAddr, gdrMap);

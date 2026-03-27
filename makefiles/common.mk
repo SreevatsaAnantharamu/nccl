@@ -21,6 +21,7 @@ NET_PROFILER ?= 0
 MLX5DV ?= 0
 MAX_EXT_NET_PLUGINS ?= 0
 EMIT_LLVM_IR ?= 0
+GDRCOPY_DIRECT ?= 0
 
 NVCC ?= $(CUDA_HOME)/bin/nvcc
 
@@ -149,6 +150,10 @@ endif
 
 ifneq ($(RDMA_CORE), 0)
 CXXFLAGS += -DNCCL_BUILD_RDMA_CORE=1 -libverbs
+endif
+
+ifneq ($(GDRCOPY_DIRECT), 0)
+CXXFLAGS += -DGDRCOPY_DIRECT=1 -lgdrapi
 endif
 
 ifneq ($(MLX5DV), 0)
